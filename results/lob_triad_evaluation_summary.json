@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-10-24T11:34:05.916869+00:00",
+  "spoke": "lob-triad",
+  "description": "Zero-Weight Level-3 Limit Order Book (LOB) & Microstructure Tomography",
+  "git_remote": "https://github.com/sneed-and-feed/lob-triad",
+  "sram_footprint": {
+    "arena_struct": "LOBStateArena",
+    "arena_bytes": 254720,
+    "arena_ceiling_bytes": 1572864,
+    "headroom_bytes": 1318144,
+    "alignment_bytes": 64,
+    "dynamic_allocations": 0,
+    "no_std_compliance": true,
+    "pass": true
+  },
+  "throughput": {
+    "ticks_processed": 50000,
+    "elapsed_seconds": 0.3549,
+    "ticks_per_second": 140895.8,
+    "target_ticks_per_second": 10000.0,
+    "pass": true
+  },
+  "discrete_continuity": {
+    "temporal_splitter": "TemporalClockContentSplitter",
+    "flicker_events_quarantined": 199,
+    "causal_events_retained": 1101,
+    "h_clock_mask_active": true,
+    "h_nope_mask_active": true
+  },
+  "causal_factorization": {
+    "raw_ofi": -20000.0,
+    "purified_ofi": 19800.0,
+    "spoof_volume_filtered": 19800,
+    "trades_volume_executed": 1000
+  },
+  "morse_impulse_gate": {
+    "glints_rejected": 20,
+    "glints_total": 20,
+    "glint_rejection_accuracy": 1.0,
+    "steps_accepted": 5,
+    "steps_total": 5,
+    "step_acceptance_accuracy": 1.0,
+    "quantile_pullback": "inv_normal_cdf (Acklam rational approximation)"
+  },
+  "so_c_triad_tie_breaker": {
+    "max_spherical_norm_drift": 4.440892098500626e-16,
+    "spherical_drift_formatted": "4.441e-16",
+    "parity_tie_break_margin": -0.28,
+    "tangent_orthogonality_verified": true,
+    "cayley_rotor_unitary": true
+  },
+  "artifacts": {
+    "lean4_formalization": "formalization\\OcclusionTriad.lean",
+    "lean4_lines": 982,
+    "lean4_sorries": 0,
+    "lean4_custom_axioms": 0,
+    "portable_studio_html": "studio\\lob_triad_portable_studio.html",
+    "portable_studio_bytes": 25309,
+    "studio_zero_cdn": true
+  },
+  "test_suite": {
+    "cargo_tests_passed": 10,
+    "pytest_tests_passed": 12,
+    "all_tests_green": true
+  }
+}

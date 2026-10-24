@@ -1,0 +1,13 @@
+[package]
+name = "lob_triad_rs"
+version = "0.1.0"
+edition = "2021"
+description = "Allocation-free #![no_std] Rust SIMD Level-3 Limit Order Book & Microstructure Tomography Kernel"
+license = "CC0-1.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["std"]
+std = []

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lob-triad"
+version = "0.1.0"
+description = "Zero-Weight Level-3 Limit Order Book & Microstructure Tomography Spoke"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/sneed-and-feed/lob-triad"
+Repository = "https://github.com/sneed-and-feed/lob-triad"
+
+[project.scripts]
+lob-triad = "lob_triad.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lob_triad*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
