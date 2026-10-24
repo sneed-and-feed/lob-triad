@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "lob-triad"
 version = "0.1.0"
 description = "Zero-Weight Level-3 Limit Order Book & Microstructure Tomography Spoke"
+authors = [{ name = "Noah Cohen" }]
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

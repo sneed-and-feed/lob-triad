@@ -202,7 +202,7 @@ Open [`studio/lob_triad_portable_studio.html`](studio/lob_triad_portable_studio.
 
 ```bibtex
 @software{lob_triad_2026,
-  author       = {Skates, Cthulhu},
+  author       = {Cohen, Noah},
   title        = {lob-triad: Zero-Weight Level-3 Limit Order Book and Microstructure Tomography Engine},
   year         = {2026},
   version      = {0.1.0},
