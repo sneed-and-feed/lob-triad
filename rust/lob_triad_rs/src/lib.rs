@@ -847,8 +847,8 @@ impl LOBStateArena {
         }
 
         if self.morse.gate_status == CLASSIFICATION_PENDING_IMPULSE {
-            // Second tick: we now have (v_{t-1}, v_t, v_{t+1}) = (v_prev1, pending_v, v)
-            let v_tm1 = self.morse.v_prev1;
+            // Second tick: we now have (v_{t-1}, v_t, v_{t+1}) = (v_curr, pending_v, v)
+            let v_tm1 = self.morse.v_curr;
             let v_t = self.morse.pending_v;
             let v_tp1 = v;
 

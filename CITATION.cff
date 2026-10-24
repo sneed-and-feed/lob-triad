@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+title: "lob-triad: Zero-Weight Level-3 Limit Order Book & Microstructure Tomography Engine"
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - family-names: Skates
+    given-names: Cthulhu
+version: 0.1.0
+date-released: 2026-10-24
+license: MIT
+repository-code: "https://github.com/sneed-and-feed/lob-triad"

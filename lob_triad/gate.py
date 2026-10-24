@@ -124,7 +124,7 @@ class DiscreteMorseImpulseGate:
             return MorseClassification.NOMINAL
 
         if self.gate_status == MorseClassification.PENDING_IMPULSE:
-            v_tm1 = self.v_prev1
+            v_tm1 = self.v_curr
             v_t = self.pending_v
             v_tp1 = v
 

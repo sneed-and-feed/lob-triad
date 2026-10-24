@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-24T11:34:05.916869+00:00",
+  "timestamp": "2026-10-24T11:35:52.797595+00:00",
   "spoke": "lob-triad",
   "description": "Zero-Weight Level-3 Limit Order Book (LOB) & Microstructure Tomography",
   "git_remote": "https://github.com/sneed-and-feed/lob-triad",
@@ -15,8 +15,8 @@
   },
   "throughput": {
     "ticks_processed": 50000,
-    "elapsed_seconds": 0.3549,
-    "ticks_per_second": 140895.8,
+    "elapsed_seconds": 0.4111,
+    "ticks_per_second": 121634.8,
     "target_ticks_per_second": 10000.0,
     "pass": true
   },
