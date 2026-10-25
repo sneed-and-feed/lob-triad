@@ -360,6 +360,19 @@ tr:hover td {
 .tag-glint { color: var(--purple); font-weight: bold; }
 .tag-step { color: var(--crimson); font-weight: bold; }
 .tag-nominal { color: var(--cyan); }
+.lit-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  color: var(--cyan);
+  text-decoration: none;
+  background: rgba(0, 240, 255, 0.08);
+}
+.lit-badge:hover {
+  background: rgba(0, 240, 255, 0.18);
+}
 </style>
 </head>
 <body>
@@ -369,11 +382,14 @@ tr:hover td {
   <div class="brand">
     <span>LOB-TRIAD</span>
     <span class="brand-badge">v0.1.0 // NO_STD SIMD</span>
+    <a class="lit-badge" href="https://arxiv.org/abs/2603.28562" target="_blank" rel="noopener">arXiv:2603.28562</a>
+    <a class="lit-badge" href="https://arxiv.org/abs/2603.22286" target="_blank" rel="noopener">arXiv:2603.22286</a>
+    <a class="lit-badge" href="https://arxiv.org/abs/2506.03133" target="_blank" rel="noopener">arXiv:2506.03133</a>
   </div>
   <div class="pill-group">
     <div class="pill"><div class="dot"></div> SRAM &lt; 1.5 MB LOCKED (275 KB)</div>
     <div class="pill"><div class="dot"></div> THROUGHPUT: <span id="hdrThroughput">12,450</span> TICKS/S</div>
-    <div class="pill"><div class="dot"></div> TRIAD DRIFT: 0.000e+00</div>
+    <div class="pill"><div class="dot"></div> TRIAD DRIFT: <span id="hdrTriadDrift">0.000e+00</span></div>
     <div class="pill" id="hdrMorsePill"><div class="dot"></div> MORSE GATE: NOMINAL</div>
   </div>
 </div>
@@ -586,11 +602,6 @@ tr:hover td {
     scenario: 'nominal'
   };
 
-  // 256-sample ring buffer for discrete Morse impulse gate
-  const morseHistory = new Float32Array(256);
-  let pendingImpulse = false;
-  let pendingPrice = 0;
-
   // Seed initial book levels
   for (let i = 0; i < 20; i++) {
     state.bids.push({ price: 10000 - i * 5, volume: Math.floor(20 + Math.random() * 80) });
@@ -639,6 +650,184 @@ tr:hover td {
     gl.linkProgram(prog);
   }
 
+  // Shared IEEE-754 Float32 / Int32 bit-manipulation buffer for zero-alloc ULP stepping
+  const _ulpBuf = new ArrayBuffer(4);
+  const _ulpF32 = new Float32Array(_ulpBuf);
+  const _ulpI32 = new Int32Array(_ulpBuf);
+
+  function ulpAddF32(val, deltaUlp) {
+    _ulpF32[0] = val;
+    const bits = _ulpI32[0];
+    if ((bits & 0x7fffffff) === 0) return 0.0;
+    _ulpI32[0] = (bits + deltaUlp) | 0;
+    return _ulpF32[0];
+  }
+
+  function sumSqF32(v) {
+    let s = Math.fround(0.0);
+    for (let i = 0; i < v.length; i++) {
+      const vi = Math.fround(v[i]);
+      s = Math.fround(s + Math.fround(vi * vi));
+    }
+    return s;
+  }
+
+  function exactSphereNormUlpPolish(v, targetSq = 1.0) {
+    const n = v.length;
+    const tSq = Math.fround(targetSq);
+    if (!(tSq > 0.0) || !Number.isFinite(tSq)) return;
+    let normSq = sumSqF32(v);
+    if (!(normSq > 1e-30)) return;
+    const invNorm = Math.fround(Math.sqrt(tSq) / Math.sqrt(normSq));
+    let maxIdx = 0;
+    let maxAbs = -1.0;
+    for (let i = 0; i < n; i++) {
+      v[i] = Math.fround(v[i] * invNorm);
+      const a = Math.abs(v[i]);
+      if (a > maxAbs) {
+        maxAbs = a;
+        maxIdx = i;
+      }
+    }
+    if (maxAbs > 1e-12) {
+      let otherSq = Math.fround(0.0);
+      for (let i = 0; i < n; i++) {
+        if (i !== maxIdx) {
+          const vi = Math.fround(v[i]);
+          otherSq = Math.fround(otherSq + Math.fround(vi * vi));
+        }
+      }
+      if (otherSq <= tSq) {
+        const sgn = v[maxIdx] >= 0.0 ? 1.0 : -1.0;
+        v[maxIdx] = Math.fround(sgn * Math.sqrt(Math.max(0.0, tSq - otherSq)));
+      }
+    }
+    if (sumSqF32(v) === tSq) return;
+
+    // 1-coordinate active ULP polish (strictly |v[i]| > 1e-12)
+    for (let pass = 0; pass < 4; pass++) {
+      let bestErr = Math.abs(sumSqF32(v) - tSq);
+      if (bestErr === 0.0) return;
+      let bestIdx = -1;
+      let bestVal = 0.0;
+      for (let i = 0; i < n; i++) {
+        const orig = v[i];
+        if (Math.abs(orig) <= 1e-12) continue;
+        for (let du = -16; du <= 16; du++) {
+          if (du === 0) continue;
+          const cand = ulpAddF32(orig, du);
+          v[i] = cand;
+          const err = Math.abs(sumSqF32(v) - tSq);
+          if (err < bestErr) {
+            bestErr = err;
+            bestIdx = i;
+            bestVal = cand;
+            if (err === 0.0) return;
+          }
+        }
+        v[i] = orig;
+      }
+      if (bestIdx >= 0) {
+        v[bestIdx] = bestVal;
+      } else {
+        break;
+      }
+    }
+    if (sumSqF32(v) === tSq) return;
+
+    // 2-coordinate active-pair ULP fallback polish (strictly |v[i]| > 1e-12 && |v[j]| > 1e-12)
+    let bestErr = Math.abs(sumSqF32(v) - tSq);
+    let bestPair = null;
+    for (let i = 0; i < n; i++) {
+      const origI = v[i];
+      if (Math.abs(origI) <= 1e-12) continue;
+      for (let j = i + 1; j < n; j++) {
+        const origJ = v[j];
+        if (Math.abs(origJ) <= 1e-12) continue;
+        for (let duI = -12; duI <= 12; duI++) {
+          const candI = ulpAddF32(origI, duI);
+          v[i] = candI;
+          for (let duJ = -12; duJ <= 12; duJ++) {
+            if (duI === 0 && duJ === 0) continue;
+            const candJ = ulpAddF32(origJ, duJ);
+            v[j] = candJ;
+            const err = Math.abs(sumSqF32(v) - tSq);
+            if (err === 0.0) return;
+            if (err < bestErr) {
+              bestErr = err;
+              bestPair = [i, candI, j, candJ];
+            }
+          }
+        }
+        v[j] = origJ;
+      }
+      v[i] = origI;
+    }
+    if (bestPair) {
+      v[bestPair[0]] = bestPair[1];
+      v[bestPair[2]] = bestPair[3];
+    }
+  }
+
+  // Orthogonal H_clock + H_nope Continuity Clutter Filter
+  function continuityClutterFilterF32(currVol, prevVol, threshold = 2.0) {
+    const delta = Math.abs(currVol - prevVol);
+    const isClock = delta <= threshold ? 1 : 0;
+    return { clockMask: isClock, nopeMask: isClock ^ 1 };
+  }
+
+  // so(8) Skew-Symmetric Bilinear Triad Tie-Breaker on S^7 (Theorems 2.1, 2.2, 2.10a)
+  const venueState8 = new Float32Array([0.70710678, 0.70710678, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+  exactSphereNormUlpPolish(venueState8, 1.0);
+  const venueControl8 = new Float32Array([0.45, -0.35, 0.25, -0.15, 0.10, -0.08, 0.05, -0.03]);
+  const venueScratchB8 = new Float32Array(8);
+  const venueSkewW8 = new Float32Array(64);
+  for (let i = 0; i < 8; i++) {
+    for (let j = i + 1; j < 8; j++) {
+      const w = Math.fround(Math.sin((i + 1) * 2.3 + (j + 1) * 1.7) * 0.4);
+      venueSkewW8[i * 8 + j] = w;
+      venueSkewW8[j * 8 + i] = -w;
+    }
+  }
+
+  function evalSkewTriadOperatorF32(uVec, vVec, wMat, gamma) {
+    const dim = vVec.length;
+    for (let k = 0; k < dim; k++) {
+      let s = 0.0;
+      const uk = uVec[k];
+      for (let j = 0; j < dim; j++) {
+        s += 0.5 * (uVec[j] + uk) * wMat[j * dim + k] * vVec[j];
+      }
+      venueScratchB8[k] = Math.fround(s);
+    }
+    // 2-pass Kahan tangent projection
+    for (let pass = 0; pass < 2; pass++) {
+      let dot = 0.0, c = 0.0;
+      for (let k = 0; k < dim; k++) {
+        const y = (venueScratchB8[k] * vVec[k]) - c;
+        const t = dot + y;
+        c = (t - dot) - y;
+        dot = t;
+      }
+      for (let k = 0; k < dim; k++) {
+        venueScratchB8[k] = Math.fround(venueScratchB8[k] - dot * vVec[k]);
+      }
+    }
+    for (let k = 0; k < dim; k++) {
+      vVec[k] = Math.fround(vVec[k] + gamma * venueScratchB8[k]);
+    }
+    exactSphereNormUlpPolish(vVec, 1.0);
+    return Math.abs(sumSqF32(vVec) - 1.0);
+  }
+
+  // Causal 3-point discrete Morse ring-buffer (N = 256)
+  const morseHistory = new Float32Array(256);
+  const morseScratch = new Float32Array(256);
+  morseHistory.fill(10012.5);
+  let pendingImpulse = false;
+  let pendingPrice = 10012.5;
+  let latestTriadDrift = 0.0;
+
   // --- Tick Generation Step ---
   function stepTick() {
     state.tickCount++;
@@ -649,7 +838,9 @@ tr:hover td {
     let volume = 5 + Math.floor(Math.random() * 20) * 5;
     let split = 'H_nope';
 
-    if (state.scenario === 'flicker' && Math.random() < 0.6) {
+    const prevVol = (state.tickCount % 2 === 0) ? volume : volume + 15;
+    const filt = continuityClutterFilterF32(volume, prevVol, state.scenario === 'flicker' ? 20.0 : 2.0);
+    if ((state.scenario === 'flicker' && Math.random() < 0.6) || filt.clockMask === 1) {
       split = 'H_clock';
       state.clockCount++;
       state.rawOfi += (side === 'BID' ? volume : -volume);
@@ -670,14 +861,12 @@ tr:hover td {
       state.asks.forEach(a => a.price -= 200);
     }
 
-    if (state.scenario === 'triad_tie') {
-      const theta = 0.05 * state.tickCount;
-      state.venue0 = Math.cos(theta) * 0.7071 + Math.sin(theta) * 0.7071;
-      state.venue1 = Math.cos(theta) * 0.7071 - Math.sin(theta) * 0.7071;
-      const norm = Math.hypot(state.venue0, state.venue1);
-      state.venue0 /= norm;
-      state.venue1 /= norm;
-    }
+    // Execute so(8) skew triad tie-breaker and active-coord ULP polish on every tick
+    venueControl8[0] = Math.fround(Math.sin(state.tickCount * 0.07));
+    venueControl8[1] = Math.fround(Math.cos(state.tickCount * 0.05));
+    latestTriadDrift = evalSkewTriadOperatorF32(venueControl8, venueState8, venueSkewW8, 0.08);
+    state.venue0 = venueState8[0];
+    state.venue1 = venueState8[1];
 
     // Update books
     state.bestBid = state.bids[0].price;
@@ -690,22 +879,35 @@ tr:hover td {
     // --- Causal 3-Point Discrete Morse Ring-Buffer Indexing ---
     // Capacity N = 256; safe causal indexing: (hIdx + 255) % 256 for (t - 1), (hIdx + 254) % 256 for (t - 2)
     const hIdx = state.tickCount % 256;
-    morseHistory[hIdx] = state.midPrice;
+    const cleanMid = Number.isFinite(state.midPrice) ? state.midPrice : 10012.5;
+    morseHistory[hIdx] = cleanMid;
 
     const midSample = morseHistory[(hIdx + 255) % 256];
     const prev2Sample = morseHistory[(hIdx + 254) % 256];
     const dMinus = midSample - prev2Sample;
-    const dPlus = midSample - state.midPrice;
+    const dPlus = midSample - cleanMid;
     const isMorseCritical = state.tickCount >= 2 && (dMinus * dPlus > 0);
 
-    let sumDiff = 0;
-    for (let i = 0; i < 256; i++) sumDiff += Math.abs(morseHistory[i] - state.midPrice);
-    const madFloor = Math.max(1.0, (sumDiff / 256) * 1.4826);
+    // 256-sample strided median & MAD floor (Number.isFinite sanitized)
+    for (let i = 0; i < 256; i++) {
+      const v = morseHistory[i];
+      morseScratch[i] = Number.isFinite(v) ? v : cleanMid;
+    }
+    morseScratch.sort();
+    const med = 0.5 * (morseScratch[127] + morseScratch[128]);
+    for (let i = 0; i < 256; i++) {
+      const v = morseHistory[i];
+      const cleanV = Number.isFinite(v) ? v : cleanMid;
+      morseScratch[i] = Math.abs(cleanV - med);
+    }
+    morseScratch.sort();
+    const mad = 0.5 * (morseScratch[127] + morseScratch[128]);
+    const madFloor = Math.max(1.0, 5.5 * 1.4826 * mad);
 
     if (pendingImpulse) {
       // 1-sample causal deferral resolution: compare return reversion vs step persistence
-      const returnDiff = Math.abs(state.midPrice - prev2Sample);
-      const stepDiff = Math.abs(state.midPrice - pendingPrice);
+      const returnDiff = Math.abs(cleanMid - prev2Sample);
+      const stepDiff = Math.abs(cleanMid - pendingPrice);
       if (returnDiff <= 0.6 * stepDiff || (dMinus * dPlus > 0)) {
         state.morseClass = 'GLINT_REJECTED';
         state.glintsCount++;
@@ -714,7 +916,7 @@ tr:hover td {
         state.stepsCount++;
       }
       pendingImpulse = false;
-    } else if (isMorseCritical && Math.abs(dMinus) > 2.0 * madFloor) {
+    } else if (isMorseCritical && Math.abs(dMinus) > madFloor) {
       state.morseClass = 'PENDING_IMPULSE';
       pendingImpulse = true;
       pendingPrice = midSample;
@@ -753,6 +955,8 @@ tr:hover td {
     document.getElementById('hudMidMicro').textContent = `$${(state.midPrice / 100).toFixed(2)} / $${(state.microPrice / 100).toFixed(2)}`;
     document.getElementById('hudMorseClass').textContent = state.morseClass;
     document.getElementById('hudMorseClass').style.color = state.morseClass === 'GLINT_REJECTED' ? 'var(--purple)' : (state.morseClass === 'STEP_MANEUVER' ? 'var(--crimson)' : 'var(--emerald)');
+    const driftEl = document.getElementById('hdrTriadDrift');
+    if (driftEl) driftEl.textContent = latestTriadDrift.toExponential(3);
 
     document.getElementById('statRawOfi').textContent = (state.rawOfi >= 0 ? '+' : '') + state.rawOfi.toLocaleString();
     document.getElementById('statPurifiedOfi').textContent = (state.purifiedOfi >= 0 ? '+' : '') + state.purifiedOfi.toLocaleString();
