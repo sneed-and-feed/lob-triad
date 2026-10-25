@@ -782,8 +782,8 @@ tr:hover td {
   const venueControl8 = new Float32Array([0.45, -0.35, 0.25, -0.15, 0.10, -0.08, 0.05, -0.03]);
   const venueScratchB8 = new Float32Array(8);
   const venueSkewW8 = new Float32Array(64);
-  for (let i = 0; i < 8; i++) {
-    for (let j = i + 1; j < 8; j++) {
+  for (let i = 0; i < 6; i++) {
+    for (let j = i + 1; j < 6; j++) {
       const w = Math.fround(Math.sin((i + 1) * 2.3 + (j + 1) * 1.7) * 0.4);
       venueSkewW8[i * 8 + j] = w;
       venueSkewW8[j * 8 + i] = -w;
@@ -852,9 +852,11 @@ tr:hover td {
     }
 
     // Dynamic scenario injections
+    let glintOffset = 0.0;
     if (state.scenario === 'glint' && state.tickCount % 20 === 0) {
       // 1-tick spurious glint spike
-      price += (Math.random() > 0.5 ? 250 : -250);
+      glintOffset = (Math.random() > 0.5 ? 250 : -250);
+      price += glintOffset;
     } else if (state.scenario === 'flash_crash' && state.tickCount % 50 === 0) {
       // Step liquidity vacuum drop
       state.bids.forEach(b => b.price -= 200);
@@ -868,10 +870,10 @@ tr:hover td {
     state.venue0 = venueState8[0];
     state.venue1 = venueState8[1];
 
-    // Update books
-    state.bestBid = state.bids[0].price;
+    // Update books (glintOffset applies transient 1-tick book/midPrice spike without permanently shifting book levels)
+    state.bestBid = state.bids[0].price + glintOffset;
     state.bestBidVol = state.bids[0].volume;
-    state.bestAsk = state.asks[0].price;
+    state.bestAsk = state.asks[0].price + glintOffset;
     state.bestAskVol = state.asks[0].volume;
     state.midPrice = (state.bestBid + state.bestAsk) / 2;
     state.microPrice = (state.bestBidVol * state.bestAsk + state.bestAskVol * state.bestBid) / (state.bestBidVol + state.bestAskVol);
@@ -905,10 +907,11 @@ tr:hover td {
     const madFloor = Math.max(1.0, 5.5 * 1.4826 * mad);
 
     if (pendingImpulse) {
-      // 1-sample causal deferral resolution: compare return reversion vs step persistence
+      // 1-sample causal deferral resolution at index (hIdx + 255) % 256:
+      // compare 3-point discrete Morse reversal (dMinus * dPlus > 0) vs step persistence
       const returnDiff = Math.abs(cleanMid - prev2Sample);
-      const stepDiff = Math.abs(cleanMid - pendingPrice);
-      if (returnDiff <= 0.6 * stepDiff || (dMinus * dPlus > 0)) {
+      const stepDiff = Math.abs(midSample - prev2Sample);
+      if (isMorseCritical || returnDiff <= 0.6 * stepDiff) {
         state.morseClass = 'GLINT_REJECTED';
         state.glintsCount++;
       } else {
@@ -916,10 +919,10 @@ tr:hover td {
         state.stepsCount++;
       }
       pendingImpulse = false;
-    } else if (isMorseCritical && Math.abs(dMinus) > madFloor) {
+    } else if (state.tickCount >= 1 && Math.abs(cleanMid - midSample) > madFloor) {
       state.morseClass = 'PENDING_IMPULSE';
       pendingImpulse = true;
-      pendingPrice = midSample;
+      pendingPrice = cleanMid;
     } else {
       state.morseClass = 'NOMINAL';
     }
