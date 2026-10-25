@@ -5,7 +5,7 @@
 //!    — Grounds Order Flow Imbalance (OFI), level-3 discrete continuity, and micro-price dynamics.
 //! 2. Cartea, Jaimungal & Penalva (2015): "Algorithmic and High-Frequency Trading" (Cambridge University Press)
 //!    — Discrete continuity equation \partial_t \rho_v + \nabla \cdot J_v = \sigma for quoting flow,
-//!      grounding TemporalClockContentSplitter (H_clock \oplus H_nope) isolating quote flicker (F_{t+1} = F_{t-k}).
+//!    grounding TemporalClockContentSplitter (H_clock \oplus H_nope) isolating quote flicker (F_{t+1} = F_{t-k}).
 //! 3. Cao et al. (2022) / LimitIRSTD (2024): 3-point discrete Morse impulse gate (Delta_- v . Delta_+ v > 0),
 //!    1-sample `pending_impulse` causal deferral gate, and \Phi^{-1}(\Delta t) pullback distinguishing
 //!    1-tick glitches (`glint_rejected`) from flash-crash liquidity vacuums (`step_maneuver`).
@@ -15,19 +15,186 @@
 //!    - Thm 2.3 & 2.6: Tangent orthogonality |<v, B_W(u, v)>| <= 1.0e-8 and exact 0.000e+00 spherical norm drift.
 //!    - Thm 7d & 7e: Discrete Morse impulse I_Morse(v) = Delta_- v . Delta_+ v > 0 iff strict local extremum.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![allow(dead_code)]
+#![allow(unused_mut)]
 #![allow(unused_unsafe)]
-#![allow(clippy::all)]
+#![allow(clippy::needless_range_loop)]
 
-#[cfg(not(feature = "std"))]
+#[cfg(all(not(feature = "std"), not(test)))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(not(feature = "std"), not(test), not(windows), not(target_arch = "wasm32")))]
+#[no_mangle]
+pub extern "C" fn rust_eh_personality() {}
+
+#[cfg(any(feature = "std", test))]
 extern crate std;
+
+#[inline(always)]
+pub fn abs_f32(x: f32) -> f32 {
+    f32::from_bits(x.to_bits() & 0x7fff_ffff)
+}
+
+#[inline(always)]
+pub fn abs_f64(x: f64) -> f64 {
+    f64::from_bits(x.to_bits() & 0x7fff_ffff_ffff_ffff)
+}
+
+#[inline(always)]
+pub fn fast_sqrt_scalar_f32(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if !x.is_finite() {
+        return x;
+    }
+    // Scale subnormal inputs into normal IEEE-754 range before bit-halving
+    let (x_norm, scale) = if x < f32::from_bits(0x0080_0000) {
+        (x * 16777216.0f32, 1.0f32 / 4096.0f32)
+    } else {
+        (x, 1.0f32)
+    };
+    let mut guess = f32::from_bits((x_norm.to_bits() >> 1) + 0x1fc0_0000);
+    for _ in 0..4 {
+        guess = 0.5f32 * (guess + x_norm / guess);
+    }
+    guess * scale
+}
+
+#[inline(always)]
+pub fn fast_sqrt_scalar_f64(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if !x.is_finite() {
+        return x;
+    }
+    let (x_norm, scale) = if x < f64::from_bits(0x0010_0000_0000_0000) {
+        (x * 18014398509481984.0f64, 1.0f64 / 134217728.0f64)
+    } else {
+        (x, 1.0f64)
+    };
+    let mut guess = f64::from_bits((x_norm.to_bits() >> 1) + 0x1ff8_0000_0000_0000);
+    for _ in 0..5 {
+        guess = 0.5f64 * (guess + x_norm / guess);
+    }
+    guess * scale
+}
+
+#[inline(always)]
+pub fn fast_sqrt(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if !x.is_finite() {
+        return x;
+    }
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        use core::arch::x86_64::*;
+        _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x)))
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        use core::arch::aarch64::*;
+        vgetq_lane_f32::<0>(vsqrtq_f32(vdupq_n_f32(x)))
+    }
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    unsafe {
+        use core::arch::wasm32::*;
+        f32x4_extract_lane::<0>(f32x4_sqrt(f32x4_splat(x)))
+    }
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        all(target_arch = "wasm32", target_feature = "simd128")
+    )))]
+    {
+        fast_sqrt_scalar_f32(x)
+    }
+}
+
+#[inline(always)]
+pub fn fast_sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if !x.is_finite() {
+        return x;
+    }
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        use core::arch::x86_64::*;
+        _mm_cvtsd_f64(_mm_sqrt_sd(_mm_setzero_pd(), _mm_set_sd(x)))
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        use core::arch::aarch64::*;
+        vgetq_lane_f64::<0>(vsqrtq_f64(vdupq_n_f64(x)))
+    }
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    unsafe {
+        use core::arch::wasm32::*;
+        f64x2_extract_lane::<0>(f64x2_sqrt(f64x2_splat(x)))
+    }
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        all(target_arch = "wasm32", target_feature = "simd128")
+    )))]
+    {
+        fast_sqrt_scalar_f64(x)
+    }
+}
+
+/// IEEE-754 #![no_std]-safe natural logarithm accurate to < 1 ULP across all positive f32 (including subnormals).
+#[inline(always)]
+pub fn fast_ln(x: f32) -> f32 {
+    if x.is_nan() {
+        return f32::NAN;
+    }
+    if x <= 0.0 {
+        return f32::NEG_INFINITY;
+    }
+    if x.is_infinite() {
+        return f32::INFINITY;
+    }
+    let (x_norm, sub_exp) = if x < f32::from_bits(0x0080_0000) {
+        (x * 8388608.0f32, -23i32)
+    } else {
+        (x, 0i32)
+    };
+    let bits = x_norm.to_bits();
+    let mut exp = ((bits >> 23) as i32) - 127 + sub_exp;
+    let mut m = f32::from_bits((bits & 0x007f_ffff) | 0x3f80_0000) as f64;
+    if m > core::f64::consts::SQRT_2 {
+        m *= 0.5;
+        exp += 1;
+    }
+    let y = (m - 1.0) / (m + 1.0);
+    let y2 = y * y;
+    let ln_m = 2.0
+        * y
+        * (1.0
+            + y2 * (1.0 / 3.0
+                + y2 * (1.0 / 5.0
+                    + y2 * (1.0 / 7.0 + y2 * (1.0 / 9.0 + y2 * (1.0 / 11.0))))));
+    ((exp as f64) * core::f64::consts::LN_2 + ln_m) as f32
+}
+
+#[inline(always)]
+pub fn approx_ln(x: f32) -> f32 {
+    fast_ln(x)
+}
+
+#[inline(always)]
+pub fn approx_sqrt(x: f32) -> f32 {
+    fast_sqrt(x)
+}
 
 // --- Capacities & Constants ---
 pub const MAX_LEVELS_PER_SIDE: usize = 256;
@@ -332,7 +499,7 @@ impl LOBStateArena {
         self.active_orders_count = 0;
 
         // Initialize default normalized venue state on S^{C-1}
-        let inv_sqrt2 = 0.70710678f32;
+        let inv_sqrt2 = core::f32::consts::FRAC_1_SQRT_2;
         self.venue_state[0] = inv_sqrt2;
         self.venue_state[1] = inv_sqrt2;
         for c in 2..MAX_CHANNELS {
@@ -564,15 +731,17 @@ impl LOBStateArena {
                 let idx = (self.history_head + HISTORY_CAPACITY - k) % HISTORY_CAPACITY;
                 let snap = &self.history[idx];
                 // Quote flicker: same level re-added after cancellation without intervening trades
-                if snap.last_event_price == price && snap.last_event_side == side {
-                    if snap.last_event_action == ACTION_CANCEL && snap.last_event_volume == volume {
-                        // Symmetric flicker detected! F_{t+1} = F_{t-k} with sigma = 0
-                        let mask_idx = if side == SIDE_BID { 0 } else { MAX_LEVELS_PER_SIDE };
-                        self.clock_mask[mask_idx] = 1;
-                        self.total_spoof_volume = self.total_spoof_volume.saturating_add(volume as u64);
-                        self.spoof_cancels_count = self.spoof_cancels_count.saturating_add(1);
-                        return true;
-                    }
+                if snap.last_event_price == price
+                    && snap.last_event_side == side
+                    && snap.last_event_action == ACTION_CANCEL
+                    && snap.last_event_volume == volume
+                {
+                    // Symmetric flicker detected! F_{t+1} = F_{t-k} with sigma = 0
+                    let mask_idx = if side == SIDE_BID { 0 } else { MAX_LEVELS_PER_SIDE };
+                    self.clock_mask[mask_idx] = 1;
+                    self.total_spoof_volume = self.total_spoof_volume.saturating_add(volume as u64);
+                    self.spoof_cancels_count = self.spoof_cancels_count.saturating_add(1);
+                    return true;
                 }
             }
         }
@@ -765,17 +934,12 @@ impl LOBStateArena {
 
     // --- Rational Approximation for Inverse Standard Normal CDF \Phi^{-1}(p) ---
     // Beasley-Springer-Moro / Acklam rational approximation in pure #![no_std]
+    #[allow(clippy::excessive_precision)]
     pub fn inv_normal_cdf(p: f32) -> f32 {
-        let p = if p <= 0.0001 {
-            0.0001
-        } else if p >= 0.9999 {
-            0.9999
-        } else {
-            p
-        };
+        let p = p.clamp(0.0001, 0.9999);
 
         let q = p - 0.5;
-        if q.abs() <= 0.42 {
+        if abs_f32(q) <= 0.42 {
             let r = q * q;
             // Central region rational approximation
             let num = (((-2.544106049637e1 * r + 4.1391346154e1) * r - 2.544106049637e1) * r + 5.3062524e0) * q;
@@ -792,43 +956,16 @@ impl LOBStateArena {
         }
     }
 
-    // Fast no_std sqrt using Newton-Raphson
+    // Fast no_std sqrt using hardware intrinsics and scalar fallback
     #[inline(always)]
     pub fn approx_sqrt(x: f32) -> f32 {
-        if x <= 0.0 {
-            return 0.0;
-        }
-        let mut y = x;
-        for _ in 0..6 {
-            y = 0.5 * (y + x / y);
-        }
-        y
+        fast_sqrt(x)
     }
 
-    // Fast no_std ln approximation
+    // Fast IEEE-754 no_std ln approximation accurate to < 1 ULP across all positive f32 (including subnormals).
     #[inline(always)]
     pub fn approx_ln(x: f32) -> f32 {
-        if x <= 0.0 {
-            return -10.0;
-        }
-        // Transform x into [1, 2) * 2^k
-        let mut val = x;
-        let mut k = 0;
-        while val > 2.0 {
-            val *= 0.5;
-            k += 1;
-        }
-        while val < 1.0 {
-            val *= 2.0;
-            k -= 1;
-        }
-        // Taylor series for ln(1 + y) where y = val - 1 in [0, 1)
-        let y = val - 1.0;
-        let y2 = y * y;
-        let y3 = y2 * y;
-        let y4 = y3 * y;
-        let series = y - 0.5 * y2 + (1.0 / 3.0) * y3 - 0.25 * y4;
-        series + (k as f32) * 0.69314718
+        fast_ln(x)
     }
 
     // --- 3-Point Discrete Morse Impulse Gate & Pullback ---
@@ -899,7 +1036,7 @@ impl LOBStateArena {
             self.morse.pending_v = v;
             self.morse.pending_dt_ns = delta_t_ns;
             self.morse.pending_nis = nis;
-            return CLASSIFICATION_PENDING_IMPULSE;
+            CLASSIFICATION_PENDING_IMPULSE
         } else {
             // Nominal step
             self.morse.gate_status = CLASSIFICATION_NOMINAL;
@@ -908,7 +1045,7 @@ impl LOBStateArena {
             self.morse.v_curr = v;
             // Online variance update (Welford-style)
             self.morse.variance = 0.95 * self.morse.variance + 0.05 * (diff * diff).max(1e-4);
-            return CLASSIFICATION_NOMINAL;
+            CLASSIFICATION_NOMINAL
         }
     }
 
@@ -916,6 +1053,7 @@ impl LOBStateArena {
     // Evaluates the bilinear triad operator B_W(u, v)_k = \sum_{i, j} u_i v_j (W_{i, j, k} - W_{i, k, j})
     // and applies the Cayley rotor R = (I - \eta/2 M)^{-1} (I + \eta/2 M) in SO(C)
     // with exact 0.000e+00 spherical norm drift.
+    #[allow(clippy::needless_range_loop)]
     pub fn evaluate_triad_tie_breaker(&mut self, eta: f32) -> f32 {
         let c = self.num_venues.clamp(2, MAX_CHANNELS);
 
@@ -982,9 +1120,7 @@ impl LOBStateArena {
                     a[col][k] = a[max_row][k];
                     a[max_row][k] = tmp;
                 }
-                let tmp_rhs = rhs[col];
-                rhs[col] = rhs[max_row];
-                rhs[max_row] = tmp_rhs;
+                rhs.swap(col, max_row);
             }
 
             let pivot = a[col][col];
@@ -1020,9 +1156,7 @@ impl LOBStateArena {
         let drift = (final_norm_sq - initial_norm_sq).abs();
         self.last_spherical_drift = drift;
 
-        for i in 0..c {
-            self.venue_state[i] = v_new[i];
-        }
+        self.venue_state[..c].copy_from_slice(&v_new[..c]);
 
         drift
     }
@@ -1030,35 +1164,44 @@ impl LOBStateArena {
 
 // --- C-ABI Exported Functions for Python ctypes FFI ---
 
+/// Returns the size in bytes of `LOBStateArena`.
 #[no_mangle]
 pub extern "C" fn lob_arena_size_bytes() -> usize {
     core::mem::size_of::<LOBStateArena>()
 }
 
+/// Initializes `LOBStateArena`.
+///
+/// # Safety
+/// `arena_ptr` must point to valid memory for `LOBStateArena`.
 #[no_mangle]
-pub extern "C" fn lob_arena_init(arena_ptr: *mut LOBStateArena) -> i32 {
+pub unsafe extern "C" fn lob_arena_init(arena_ptr: *mut LOBStateArena) -> i32 {
     if arena_ptr.is_null() {
         return -1;
     }
-    unsafe {
-        (*arena_ptr).reset();
-    }
+    (*arena_ptr).reset();
     0
 }
 
+/// Resets `LOBStateArena`.
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`.
 #[no_mangle]
-pub extern "C" fn lob_arena_reset(arena_ptr: *mut LOBStateArena) -> i32 {
+pub unsafe extern "C" fn lob_arena_reset(arena_ptr: *mut LOBStateArena) -> i32 {
     if arena_ptr.is_null() {
         return -1;
     }
-    unsafe {
-        (*arena_ptr).reset();
-    }
+    (*arena_ptr).reset();
     0
 }
 
+/// Processes a single market event tick.
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`.
 #[no_mangle]
-pub extern "C" fn lob_arena_process_tick(
+pub unsafe extern "C" fn lob_arena_process_tick(
     arena_ptr: *mut LOBStateArena,
     action: u8,
     order_id: u64,
@@ -1070,13 +1213,15 @@ pub extern "C" fn lob_arena_process_tick(
     if arena_ptr.is_null() {
         return -1;
     }
-    unsafe {
-        (*arena_ptr).process_tick(action, order_id, side, price, volume, timestamp_ns)
-    }
+    (*arena_ptr).process_tick(action, order_id, side, price, volume, timestamp_ns)
 }
 
+/// Extracts top of book (best bid and best ask price/volume).
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`. Any non-null output pointer must point to writable memory.
 #[no_mangle]
-pub extern "C" fn lob_arena_get_top_of_book(
+pub unsafe extern "C" fn lob_arena_get_top_of_book(
     arena_ptr: *const LOBStateArena,
     best_bid_p: *mut u32,
     best_bid_v: *mut u32,
@@ -1086,39 +1231,45 @@ pub extern "C" fn lob_arena_get_top_of_book(
     if arena_ptr.is_null() {
         return -1;
     }
-    unsafe {
-        let (bb_p, bb_v) = (*arena_ptr).best_bid();
-        let (ba_p, ba_v) = (*arena_ptr).best_ask();
-        if !best_bid_p.is_null() { *best_bid_p = bb_p; }
-        if !best_bid_v.is_null() { *best_bid_v = bb_v; }
-        if !best_ask_p.is_null() { *best_ask_p = ba_p; }
-        if !best_ask_v.is_null() { *best_ask_v = ba_v; }
-    }
+    let (bb_p, bb_v) = (*arena_ptr).best_bid();
+    let (ba_p, ba_v) = (*arena_ptr).best_ask();
+    if !best_bid_p.is_null() { *best_bid_p = bb_p; }
+    if !best_bid_v.is_null() { *best_bid_v = bb_v; }
+    if !best_ask_p.is_null() { *best_ask_p = ba_p; }
+    if !best_ask_v.is_null() { *best_ask_v = ba_v; }
     0
 }
 
+/// Returns the current micro-price.
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`.
 #[no_mangle]
-pub extern "C" fn lob_arena_get_micro_price(arena_ptr: *const LOBStateArena) -> f32 {
+pub unsafe extern "C" fn lob_arena_get_micro_price(arena_ptr: *const LOBStateArena) -> f32 {
     if arena_ptr.is_null() {
         return 0.0;
     }
-    unsafe {
-        (*arena_ptr).micro_price()
-    }
+    (*arena_ptr).micro_price()
 }
 
+/// Returns the current mid-price.
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`.
 #[no_mangle]
-pub extern "C" fn lob_arena_get_mid_price(arena_ptr: *const LOBStateArena) -> f32 {
+pub unsafe extern "C" fn lob_arena_get_mid_price(arena_ptr: *const LOBStateArena) -> f32 {
     if arena_ptr.is_null() {
         return 0.0;
     }
-    unsafe {
-        (*arena_ptr).mid_price()
-    }
+    (*arena_ptr).mid_price()
 }
 
+/// Returns order flow imbalance (raw and purified).
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`. Any non-null output pointer must point to writable memory.
 #[no_mangle]
-pub extern "C" fn lob_arena_get_ofi(
+pub unsafe extern "C" fn lob_arena_get_ofi(
     arena_ptr: *const LOBStateArena,
     raw_ofi: *mut f64,
     purified_ofi: *mut f64,
@@ -1126,15 +1277,17 @@ pub extern "C" fn lob_arena_get_ofi(
     if arena_ptr.is_null() {
         return -1;
     }
-    unsafe {
-        if !raw_ofi.is_null() { *raw_ofi = (*arena_ptr).cum_raw_ofi; }
-        if !purified_ofi.is_null() { *purified_ofi = (*arena_ptr).cum_purified_ofi; }
-    }
+    if !raw_ofi.is_null() { *raw_ofi = (*arena_ptr).cum_raw_ofi; }
+    if !purified_ofi.is_null() { *purified_ofi = (*arena_ptr).cum_purified_ofi; }
     0
 }
 
+/// Advances the 3-point discrete Morse impulse gate.
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`.
 #[no_mangle]
-pub extern "C" fn lob_arena_step_morse_gate(
+pub unsafe extern "C" fn lob_arena_step_morse_gate(
     arena_ptr: *mut LOBStateArena,
     mid_price: f32,
     delta_t_ns: u64,
@@ -1142,13 +1295,15 @@ pub extern "C" fn lob_arena_step_morse_gate(
     if arena_ptr.is_null() {
         return -1;
     }
-    unsafe {
-        (*arena_ptr).step_morse_gate(mid_price, delta_t_ns)
-    }
+    (*arena_ptr).step_morse_gate(mid_price, delta_t_ns)
 }
 
+/// Evaluates the so(C) triad tie-breaker with Cayley rotor update.
+///
+/// # Safety
+/// `arena_ptr` must point to a valid `LOBStateArena`. If `drift_out` is non-null, it must point to writable memory.
 #[no_mangle]
-pub extern "C" fn lob_arena_evaluate_triad(
+pub unsafe extern "C" fn lob_arena_evaluate_triad(
     arena_ptr: *mut LOBStateArena,
     eta: f32,
     drift_out: *mut f32,
@@ -1156,11 +1311,9 @@ pub extern "C" fn lob_arena_evaluate_triad(
     if arena_ptr.is_null() {
         return -1;
     }
-    unsafe {
-        let drift = (*arena_ptr).evaluate_triad_tie_breaker(eta);
-        if !drift_out.is_null() {
-            *drift_out = drift;
-        }
+    let drift = (*arena_ptr).evaluate_triad_tie_breaker(eta);
+    if !drift_out.is_null() {
+        *drift_out = drift;
     }
     0
 }
@@ -1311,8 +1464,8 @@ mod tests {
         arena.reset();
 
         // Populate anti-symmetric triad tensor W_{0, 1, 0} = 1.0, W_{0, 0, 1} = -1.0
-        arena.triad_tensor[0 * 64 + 1 * 8 + 0] = 1.5;
-        arena.triad_tensor[0 * 64 + 0 * 8 + 1] = -1.5;
+        arena.triad_tensor[8] = 1.5;
+        arena.triad_tensor[1] = -1.5;
 
         let drift = arena.evaluate_triad_tie_breaker(0.01);
         // Exact 0.000e+00 spherical norm drift
@@ -1331,8 +1484,8 @@ mod tests {
 
         // Populate anti-symmetric interaction W_{0, 1, 0} = 2.0, W_{0, 0, 1} = -2.0
         // breaking the tie according to directed lead-lag flow
-        arena.triad_tensor[0 * 64 + 1 * 8 + 0] = 2.0;
-        arena.triad_tensor[0 * 64 + 0 * 8 + 1] = -2.0;
+        arena.triad_tensor[8] = 2.0;
+        arena.triad_tensor[1] = -2.0;
 
         let drift = arena.evaluate_triad_tie_breaker(0.05);
         assert!(drift <= 1e-6);
@@ -1371,42 +1524,70 @@ mod tests {
         assert!(sz <= 1_572_864);
 
         let mut arena = LOBStateArena::new_const();
-        let ret_init = lob_arena_init(&mut arena as *mut _);
-        assert_eq!(ret_init, 0);
+        unsafe {
+            let ret_init = lob_arena_init(&mut arena as *mut _);
+            assert_eq!(ret_init, 0);
 
-        let ret_tick = lob_arena_process_tick(
-            &mut arena as *mut _,
-            ACTION_ADD,
-            55,
-            SIDE_BID,
-            10000,
-            10,
-            1_000_000,
-        );
-        assert_eq!(ret_tick, 0);
+            let ret_tick = lob_arena_process_tick(
+                &mut arena as *mut _,
+                ACTION_ADD,
+                55,
+                SIDE_BID,
+                10000,
+                10,
+                1_000_000,
+            );
+            assert_eq!(ret_tick, 0);
 
-        let mut bb_p: u32 = 0;
-        let mut bb_v: u32 = 0;
-        let mut ba_p: u32 = 0;
-        let mut ba_v: u32 = 0;
-        let ret_tob = lob_arena_get_top_of_book(
-            &arena as *const _,
-            &mut bb_p as *mut _,
-            &mut bb_v as *mut _,
-            &mut ba_p as *mut _,
-            &mut ba_v as *mut _,
-        );
-        assert_eq!(ret_tob, 0);
-        assert_eq!(bb_p, 10000);
-        assert_eq!(bb_v, 10);
+            let mut bb_p: u32 = 0;
+            let mut bb_v: u32 = 0;
+            let mut ba_p: u32 = 0;
+            let mut ba_v: u32 = 0;
+            let ret_tob = lob_arena_get_top_of_book(
+                &arena as *const _,
+                &mut bb_p as *mut _,
+                &mut bb_v as *mut _,
+                &mut ba_p as *mut _,
+                &mut ba_v as *mut _,
+            );
+            assert_eq!(ret_tob, 0);
+            assert_eq!(bb_p, 10000);
+            assert_eq!(bb_v, 10);
 
-        let micro = lob_arena_get_micro_price(&arena as *const _);
-        assert_eq!(micro, 10000.0);
+            let micro = lob_arena_get_micro_price(&arena as *const _);
+            assert_eq!(micro, 10000.0);
 
-        let mut drift: f32 = 0.0;
-        let ret_triad = lob_arena_evaluate_triad(&mut arena as *mut _, 0.01, &mut drift as *mut _);
-        assert_eq!(ret_triad, 0);
-        assert!(drift <= 1e-6);
+            let mut drift: f32 = 0.0;
+            let ret_triad = lob_arena_evaluate_triad(&mut arena as *mut _, 0.01, &mut drift as *mut _);
+            assert_eq!(ret_triad, 0);
+            assert!(drift <= 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_fast_math_edge_cases_and_subnormals() {
+        for &val in &[1e-40f32, 1e-12, 0.01, 0.5, 1.0, 2.0, 100.0, 1e10] {
+            let s_hw = fast_sqrt(val);
+            let s_sc = fast_sqrt_scalar_f32(val);
+            assert!(abs_f32(s_hw - val.sqrt()) / val.sqrt() < 1e-6);
+            assert!(abs_f32(s_sc - val.sqrt()) / val.sqrt() < 1e-6);
+            let l = fast_ln(val);
+            assert!(abs_f32(l - val.ln()) < 1e-5, "fast_ln({}) = {} vs {}", val, l, val.ln());
+            assert_eq!(approx_ln(val), fast_ln(val));
+            assert_eq!(approx_sqrt(val), fast_sqrt(val));
+        }
+        assert_eq!(fast_sqrt(0.0), 0.0);
+        assert_eq!(fast_sqrt(-5.0), 0.0);
+        assert!(fast_sqrt(f32::INFINITY).is_infinite());
+        assert!(fast_sqrt_scalar_f32(f32::INFINITY).is_infinite());
+        assert!(fast_sqrt(f32::NAN).is_nan());
+        assert!(fast_ln(f32::INFINITY).is_infinite());
+        assert_eq!(fast_ln(0.0), f32::NEG_INFINITY);
+        assert_eq!(fast_ln(-1.0), f32::NEG_INFINITY);
+        assert!(fast_ln(f32::NAN).is_nan());
+        assert_eq!(approx_ln(f32::INFINITY), f32::INFINITY);
+        assert_eq!(approx_ln(0.0), f32::NEG_INFINITY);
+        assert_eq!(approx_ln(-5.0), f32::NEG_INFINITY);
     }
 }
 

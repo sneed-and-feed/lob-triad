@@ -1,0 +1,99 @@
+{
+  "schema_version": "1.0.0",
+  "verifier": "Broadcom BCM2712 Cortex-A76 Hardware Cache Verifier (scripts/verify_bcm2712_arena.py)",
+  "timestamp_utc": "2026-10-25T18:36:20Z",
+  "hardware_target": "Broadcom BCM2712 (Raspberry Pi 5)",
+  "cpu_core": "ARM Cortex-A76 (ARMv8.2-A)",
+  "bcm2712_cache_geometry": {
+    "hardware_target": "Broadcom BCM2712 (Raspberry Pi 5)",
+    "cpu_core": "ARM Cortex-A76 (ARMv8.2-A)",
+    "clock_mhz": 2400,
+    "line_size_bytes": 64,
+    "l1d": {
+      "size_bytes": 65536,
+      "size_kb": 64,
+      "ways": 4,
+      "sets": 256,
+      "line_size_bytes": 64,
+      "policy": "Pseudo-LRU / Tree-PLRU (4-way)"
+    },
+    "l2": {
+      "size_bytes": 524288,
+      "size_kb": 512,
+      "ways": 8,
+      "sets": 1024,
+      "line_size_bytes": 64,
+      "policy": "Pseudo-LRU (8-way private per core)"
+    },
+    "l3": {
+      "size_bytes": 2097152,
+      "size_mb": 2.0,
+      "ways": 16,
+      "sets": 2048,
+      "line_size_bytes": 64,
+      "policy": "Pseudo-LRU / True LRU (16-way shared LLd)"
+    }
+  },
+  "arenas": {
+    "lob_triad": {
+      "arena_struct": "LOBStateArena",
+      "spoke": "lob_triad",
+      "description": "Zero-Weight Level-3 Limit Order Book & Microstructure Tomography Fixed SRAM Arena",
+      "arena_size_bytes": 254720,
+      "arena_size_kb": 248.75,
+      "arena_max_ceiling_bytes": 1572864,
+      "arena_alignment_bytes": 64,
+      "total_references": 50000000,
+      "simulation_wall_time_sec": 1.2313,
+      "throughput_refs_per_sec": 40605944.6,
+      "l1d": {
+        "hits": 36088886,
+        "misses": 13911114,
+        "hit_rate_pct": 72.18
+      },
+      "l2": {
+        "hits": 13907134,
+        "misses": 3980,
+        "hit_rate_pct": 99.97
+      },
+      "l3": {
+        "hits": 0,
+        "misses": 3980,
+        "hit_rate_pct": 0.0
+      },
+      "lld_miss_rate_pct": 0.00796,
+      "target_lld_miss_rate_pct": 0.05,
+      "target_achieved": true,
+      "allocator_static_audit": {
+        "audited": true,
+        "target_binary": "c:/Users/x/Documents/antigravity/lob-triad/target/release/lob_triad_rs.dll",
+        "heap_allocators_imported": [],
+        "stepping_symbols_verified": [
+          "lob_arena_size_bytes",
+          "lob_arena_init",
+          "lob_arena_reset",
+          "lob_arena_process_tick",
+          "lob_arena_get_top_of_book",
+          "lob_arena_get_micro_price",
+          "lob_arena_get_mid_price",
+          "lob_arena_get_ofi",
+          "lob_arena_step_morse_gate",
+          "lob_arena_evaluate_triad"
+        ],
+        "stealth_symbols_verified": [],
+        "dynamic_allocations_detected": 0,
+        "status": "ZERO_DYNAMIC_ALLOCATIONS_VERIFIED"
+      }
+    }
+  },
+  "summary": {
+    "total_arenas_verified": 1,
+    "total_references_simulated": 50000000,
+    "mean_lld_miss_rate_pct": 0.00796,
+    "max_lld_miss_rate_pct": 0.00796,
+    "target_threshold_pct": 0.05,
+    "all_cache_targets_passed": true,
+    "all_allocator_audits_passed": true,
+    "overall_verification_status": "PASS"
+  }
+}

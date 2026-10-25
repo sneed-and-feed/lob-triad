@@ -586,6 +586,11 @@ tr:hover td {
     scenario: 'nominal'
   };
 
+  // 256-sample ring buffer for discrete Morse impulse gate
+  const morseHistory = new Float32Array(256);
+  let pendingImpulse = false;
+  let pendingPrice = 0;
+
   // Seed initial book levels
   for (let i = 0; i < 20; i++) {
     state.bids.push({ price: 10000 - i * 5, volume: Math.floor(20 + Math.random() * 80) });
@@ -643,7 +648,6 @@ tr:hover td {
     let price = side === 'BID' ? 10000 - Math.floor(Math.random() * 8) * 5 : 10025 + Math.floor(Math.random() * 8) * 5;
     let volume = 5 + Math.floor(Math.random() * 20) * 5;
     let split = 'H_nope';
-    state.morseClass = 'NOMINAL';
 
     if (state.scenario === 'flicker' && Math.random() < 0.6) {
       split = 'H_clock';
@@ -656,14 +660,14 @@ tr:hover td {
       state.purifiedOfi += dOfi;
     }
 
+    // Dynamic scenario injections
     if (state.scenario === 'glint' && state.tickCount % 20 === 0) {
-      state.morseClass = 'GLINT_REJECTED';
-      state.glintsCount++;
+      // 1-tick spurious glint spike
+      price += (Math.random() > 0.5 ? 250 : -250);
     } else if (state.scenario === 'flash_crash' && state.tickCount % 50 === 0) {
-      state.morseClass = 'STEP_MANEUVER';
-      state.stepsCount++;
-      state.bestBid -= 200;
-      state.bestAsk -= 200;
+      // Step liquidity vacuum drop
+      state.bids.forEach(b => b.price -= 200);
+      state.asks.forEach(a => a.price -= 200);
     }
 
     if (state.scenario === 'triad_tie') {
@@ -682,6 +686,41 @@ tr:hover td {
     state.bestAskVol = state.asks[0].volume;
     state.midPrice = (state.bestBid + state.bestAsk) / 2;
     state.microPrice = (state.bestBidVol * state.bestAsk + state.bestAskVol * state.bestBid) / (state.bestBidVol + state.bestAskVol);
+
+    // --- Causal 3-Point Discrete Morse Ring-Buffer Indexing ---
+    // Capacity N = 256; safe causal indexing: (hIdx + 255) % 256 for (t - 1), (hIdx + 254) % 256 for (t - 2)
+    const hIdx = state.tickCount % 256;
+    morseHistory[hIdx] = state.midPrice;
+
+    const midSample = morseHistory[(hIdx + 255) % 256];
+    const prev2Sample = morseHistory[(hIdx + 254) % 256];
+    const dMinus = midSample - prev2Sample;
+    const dPlus = midSample - state.midPrice;
+    const isMorseCritical = state.tickCount >= 2 && (dMinus * dPlus > 0);
+
+    let sumDiff = 0;
+    for (let i = 0; i < 256; i++) sumDiff += Math.abs(morseHistory[i] - state.midPrice);
+    const madFloor = Math.max(1.0, (sumDiff / 256) * 1.4826);
+
+    if (pendingImpulse) {
+      // 1-sample causal deferral resolution: compare return reversion vs step persistence
+      const returnDiff = Math.abs(state.midPrice - prev2Sample);
+      const stepDiff = Math.abs(state.midPrice - pendingPrice);
+      if (returnDiff <= 0.6 * stepDiff || (dMinus * dPlus > 0)) {
+        state.morseClass = 'GLINT_REJECTED';
+        state.glintsCount++;
+      } else {
+        state.morseClass = 'STEP_MANEUVER';
+        state.stepsCount++;
+      }
+      pendingImpulse = false;
+    } else if (isMorseCritical && Math.abs(dMinus) > 2.0 * madFloor) {
+      state.morseClass = 'PENDING_IMPULSE';
+      pendingImpulse = true;
+      pendingPrice = midSample;
+    } else {
+      state.morseClass = 'NOMINAL';
+    }
 
     addLogRow(state.tickCount, action, side, price, volume, state.morseClass, split);
     updateDOM();
