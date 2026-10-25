@@ -3,13 +3,13 @@
 [![Rust Tests](https://img.shields.io/badge/rust-no__std%20simd-brightgreen.svg)](#)
 [![Python Tests](https://img.shields.io/badge/pytest-12%2F12%20pass-brightgreen.svg)](#)
 [![SRAM Footprint](https://img.shields.io/badge/sram-254%20KB%20%2F%20%3C1.5%20MB-blue.svg)](#)
-[![Throughput](https://img.shields.io/badge/throughput-121%2C635%20ticks%2Fs-blueviolet.svg)](#)
+[![Throughput](https://img.shields.io/badge/throughput-135%2C985%20ticks%2Fs-blueviolet.svg)](#)
 [![Lean 4 Verified](https://img.shields.io/badge/lean%204-0%20sorry-success.svg)](#)
 
-**`lob-triad`** is the quantitative market microstructure and Level-3 Limit Order Book (LOB) tomography spoke of **Project DarkSnail**. It features an allocation-free `#![no_std]` Rust SIMD kernel (`LOBStateArena`), a zero-copy C-ABI bridge, a Python evaluation harness, and a self-contained single-file WebGL2 order-book reconstruction studio (`studio/lob_triad_portable_studio.html`) running at `121,635` ticks/sec inside a `254,720 B < 1.5 MB` L2 SRAM footprint.
+**`lob-triad`** is the quantitative market microstructure and Level-3 Limit Order Book (LOB) tomography spoke of **Project DarkSnail**. It features an allocation-free `#![no_std]` Rust SIMD kernel (`LOBStateArena`), a zero-copy C-ABI bridge, a Python evaluation harness, and a self-contained single-file WebGL2 order-book reconstruction studio (`studio/lob_triad_portable_studio.html`) running at `135,985` ticks/sec inside a `254,720 B < 1.5 MB` L2 SRAM footprint.
 
 - **Remote Repository**: `https://github.com/sneed-and-feed/lob-triad`
-- **Machine-Checked Foundation**: [`formalization/OcclusionTriad.lean`](formalization/OcclusionTriad.lean) (`982` lines, `0 sorry`, `0` custom axioms)
+- **Machine-Checked Foundation**: [`formalization/OcclusionTriad.lean`](formalization/OcclusionTriad.lean) (`999` lines, `0 sorry`, `0` custom axioms)
 - **Architecture Specification**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ---
@@ -18,7 +18,7 @@
 
 1. **Static L2 SRAM Arena (`254,720 B < 1.5 MB`, 64-Byte Cache-Line Aligned, `0` Dynamic Allocations)**:
    - `LOBStateArena` is fixed at `254,720 B` (`16.19%` of the `1,572,864 B` / `1.5 MB` L2 SRAM ceiling, statically asserted via `const _: () = assert!(core::mem::size_of::<LOBStateArena>() <= 1_572_864);`) and operates in `#![no_std]` Rust with zero heap allocations (`no alloc`).
-   - Sustains **`121,635` ticks/sec** (`0.4111 s` for `50,000` L3 events, `>12x` above the `10,000` ticks/sec target) with a **`0.008%` L1/LLd data cache miss rate** on Broadcom BCM2712 ARM Cortex-A76 hardware.
+   - Sustains **`135,985` ticks/sec** (`0.3677 s` for `50,000` L3 events, `>13x` above the `10,000` ticks/sec target) with a **`0.008%` L1/LLd data cache miss rate** on Broadcom BCM2712 ARM Cortex-A76 hardware.
 2. **`TemporalClockContentSplitter` — Quote Flicker Quarantine** — $(\mathcal H_{\text{clock}} \oplus \mathcal H_{\text{nope}})$:
    - Decomposes discrete Level-3 order book flux into orthogonal subspaces: $\mathcal H_{\text{clock}}$ (`clock_mask`) quarantines symmetric high-frequency cancel-replace quote flicker (`F_{t+1} = F_{t-k}` with zero execution sink $\sigma = 0$), while `nope_mask` retains irreversible liquidity flow and trade executions ($\sigma \neq 0$).
 3. **Non-Local Causal Factorization — Active Execution Graph vs. Passive Layering Manifold**:
@@ -29,7 +29,7 @@
 5. **Skew-Symmetric Triad Tie-Breaker Across Correlated Venues** — $(\mathfrak{so}(C) \to \mathrm{SO}(C))$:
    - Resolves cross-asset and multi-venue lead-lag parity ties via the bilinear skew-symmetric tensor operator $B_{W, k}(u, v)$ and Cayley rotor update $R \in \mathrm{SO}(C)$ with **`0.000e+00` (`4.441e-16` float64) spherical radial drift**.
 6. **Single-File Zero-Install WebGL2 L3 Reconstruction Studio (`studio/lob_triad_portable_studio.html`)**:
-   - Self-contained client-side HTML5/WebGL2 workstation (`25,309 B`, zero external CDN dependencies) replaying 10,000+ ticks/sec with live depth-of-book heatmaps, purified OFI strips, and Morse gate telemetry.
+   - Self-contained client-side HTML5/WebGL2 workstation (`34,590 B`, zero external CDN dependencies) replaying 10,000+ ticks/sec with live depth-of-book heatmaps, purified OFI strips, and Morse gate telemetry.
 
 ---
 
@@ -122,13 +122,13 @@ Results recorded in [`results/lob_triad_evaluation_summary.json`](results/lob_tr
 | `LOBStateArena` SRAM Footprint | `254,720 B` (`~254 KB`, `16.19%` of budget) | $\le 1,572,864\text{ B}$ (`1.5 MB` L2 SRAM) | PASS |
 | Arena Alignment & Allocation Policy | `64 B` (`align(64)`), `0` heap allocs (`#![no_std]`) | `64 B` aligned, `0` allocators | PASS |
 | BCM2712 Cortex-A76 LLd Cache Miss Rate | `0.008%` | $< 0.10\%$ | PASS |
-| Single-Core L3 Tick Throughput | `121,635` ticks/sec (`50,000` ticks in `0.4111 s`) | $\ge 10,000\text{ ticks/s}$ | PASS |
+| Single-Core L3 Tick Throughput | `135,985` ticks/sec (`50,000` ticks in `0.3677 s`) | $\ge 10,000\text{ ticks/s}$ | PASS |
 | Continuity Quote Flicker Quarantine | `199` flicker events in $\mathcal H_{\text{clock}}$, `1,101` causal | Isolates `F_{t+1} = F_{t-k}` ($\sigma = 0$) | PASS |
 | Causal Factorization (`OFI_purified`) | `+19,800.0` purified vs. `-20,000.0` raw (`19,800` spoof filtered) | Strips passive layering $\Omega_{\text{reg}}$ | PASS |
 | Morse 1-Tick Glitch Rejection (`glint_rejected`) | `100.0%` (`502/502` stress suite; `20/20` nominal) | `100.0%` glitch rejection | PASS |
 | Morse Liquidity Sweep Detection (`step_maneuver`) | `100.0%` (`204/204` stress suite; `5/5` nominal) | `100.0%` sweep detection | PASS |
 | Skew-Symmetric $\mathfrak{so}(C)$ Cayley Rotor Drift | `0.000e+00` (`4.441e-16` float64 residual) | $\le 1.0\text{e}-8$ | PASS |
-| Lean 4 Formalization (`OcclusionTriad.lean`) | `0 sorry`, `0` custom axioms (`982` lines) | `0 sorry` | PASS |
+| Lean 4 Formalization (`OcclusionTriad.lean`) | `0 sorry`, `0` custom axioms (`999` lines) | `0 sorry` | PASS |
 | Automated Test Suites (`cargo test` & `pytest`) | `10 / 10` Rust + `12 / 12` Python passed | `100%` pass | PASS |
 
 ---
@@ -144,7 +144,7 @@ lob-triad/
 ├── docs/
 │   └── ARCHITECTURE.md                     # Detailed mathematical & systems architecture
 ├── formalization/
-│   └── OcclusionTriad.lean                 # Lean 4 machine-checked proofs (982 lines, 0 sorry)
+│   └── OcclusionTriad.lean                 # Lean 4 machine-checked proofs (999 lines, 0 sorry)
 ├── rust/
 │   └── lob_triad_rs/
 │       ├── Cargo.toml                      # #![no_std] crate definition

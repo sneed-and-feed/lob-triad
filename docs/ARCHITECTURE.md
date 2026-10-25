@@ -41,7 +41,7 @@
 ┌──────────────────────────────────────┐  ┌────────────────────────────────────┐
 │ C-ABI FFI & Python Evaluation Suite  │  │ Portable WebGL2 L3 Studio          │
 │ - 254,720 B arena (< 1.5 MB L2 SRAM) │  │ - studio/lob_triad_portable_studio │
-│ - 121,635 ticks/sec, 0.008% LLd miss │  │ - 10,000+ ticks/sec client replay  │
+│ - 135,985 ticks/sec, 0.008% LLd miss │  │ - 10,000+ ticks/sec client replay  │
 └──────────────────────────────────────┘  └────────────────────────────────────┘
 ```
 
@@ -55,7 +55,7 @@
 | Spoofing-Free OFI Purification | Non-Local Causal Factorization ($\mathcal G_{\text{act}}$ vs. `Omega_reg`) | Projects Level-3 order events onto the active execution graph, stripping passive spoofing layers from `OFI_purified`. |
 | 1-Tick Glitch vs. Flash-Crash Filter | `DiscreteMorseImpulseGate` (`lob_triad/gate.py`) | Theorem 7d (`morseImpulse_iff_strict_extremum`): $\Delta_- v \cdot \Delta_+ v > 0$ with 1-sample deferral and $\Phi^{-1}(\Delta t)$ pullback rejects `502/502` glitches and detects `204/204` sweeps. |
 | Multi-Venue Lead-Lag Tie-Breaker | `SkewSymmetricTriadTieBreaker` (`lob_triad/triad.py`) | Theorems 2.1–2.6: $\mathfrak{so}(C)$ skew-symmetric triad generator lifted via Cayley transform to $\mathrm{SO}(C)$ resolves parity ties with `0.000e+00` radial drift. |
-| L2 SRAM-Resident L3 Book Engine | `LOBStateArena` (`rust/lob_triad_rs/src/lib.rs`) | `254,720 B` (`< 1.5 MB` L2 SRAM), 64-byte aligned, `#![no_std]` zero-allocation execution at `121,635` ticks/sec and `0.008%` LLd cache miss rate. |
+| L2 SRAM-Resident L3 Book Engine | `LOBStateArena` (`rust/lob_triad_rs/src/lib.rs`) | `254,720 B` (`< 1.5 MB` L2 SRAM), 64-byte aligned, `#![no_std]` zero-allocation execution at `135,985` ticks/sec and `0.008%` LLd cache miss rate. |
 
 ---
 
