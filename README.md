@@ -1,14 +1,16 @@
 # lob-triad: Zero-Weight Level-3 Limit Order Book & Microstructure Tomography Engine
 
-[![Rust Tests](https://img.shields.io/badge/rust-no__std%20simd-brightgreen.svg)](#)
-[![Python Tests](https://img.shields.io/badge/pytest-12%2F12%20pass-brightgreen.svg)](#)
-[![SRAM Footprint](https://img.shields.io/badge/sram-254%20KB%20%2F%20%3C1.5%20MB-blue.svg)](#)
-[![Throughput](https://img.shields.io/badge/throughput-135%2C985%20ticks%2Fs-blueviolet.svg)](#)
-[![Lean 4 Verified](https://img.shields.io/badge/lean%204-0%20sorry-success.svg)](#)
+[![CI](https://github.com/sneed-and-feed/lob-triad/actions/workflows/ci.yml/badge.svg)](https://github.com/sneed-and-feed/lob-triad/actions/workflows/ci.yml)
+[![Rust Tests](https://img.shields.io/badge/rust-no__std%20simd-brightgreen.svg)](rust/lob_triad_rs)
+[![Python Tests](https://img.shields.io/badge/pytest-12%2F12%20pass-brightgreen.svg)](tests/test_lob_triad.py)
+[![SRAM Footprint](https://img.shields.io/badge/sram-254%20KB%20%2F%20%3C1.5%20MB-blue.svg)](results/lob_triad_evaluation_summary.json)
+[![Throughput](https://img.shields.io/badge/throughput-135%2C985%20ticks%2Fs-blueviolet.svg)](results/lob_triad_evaluation_summary.json)
+[![Lean 4 Verified](https://img.shields.io/badge/lean%204-0%20sorry-success.svg)](formalization/OcclusionTriad.lean)
+[![License: CC0-1.0](https://img.shields.io/badge/License-CC0--1.0-lightgrey.svg)](LICENSE)
 
-**`lob-triad`** is the quantitative market microstructure and Level-3 Limit Order Book (LOB) tomography spoke of **Project DarkSnail**. It features an allocation-free `#![no_std]` Rust SIMD kernel (`LOBStateArena`), a zero-copy C-ABI bridge, a Python evaluation harness, and a self-contained single-file WebGL2 order-book reconstruction studio (`studio/lob_triad_portable_studio.html`) running at `135,985` ticks/sec inside a `254,720 B < 1.5 MB` L2 SRAM footprint.
+**`lob-triad`** is the quantitative market microstructure and Level-3 Limit Order Book (LOB) tomography spoke of [**Project DarkSnail**](https://github.com/sneed-and-feed/projectdarksnail). It features an allocation-free `#![no_std]` Rust SIMD kernel (`LOBStateArena`), a zero-copy C-ABI bridge, a Python evaluation harness, and a self-contained single-file WebGL2 order-book reconstruction studio (`studio/lob_triad_portable_studio.html`) running at `135,985` ticks/sec inside a `254,720 B < 1.5 MB` L2 SRAM footprint.
 
-- **Remote Repository**: `https://github.com/sneed-and-feed/lob-triad`
+- **Repository**: [https://github.com/sneed-and-feed/lob-triad](https://github.com/sneed-and-feed/lob-triad)
 - **Machine-Checked Foundation**: [`formalization/OcclusionTriad.lean`](formalization/OcclusionTriad.lean) (`999` lines, `0 sorry`, `0` custom axioms)
 - **Architecture Specification**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
@@ -140,6 +142,7 @@ lob-triad/
 ├── Cargo.toml                              # Root workspace configuration
 ├── pyproject.toml                          # Python packaging & CLI entrypoint
 ├── CITATION.cff                            # Citation metadata
+├── LICENSE                                 # CC0 1.0 Universal public domain dedication
 ├── README.md                               # Publication-grade spoke documentation
 ├── docs/
 │   └── ARCHITECTURE.md                     # Detailed mathematical & systems architecture
@@ -162,7 +165,7 @@ lob-triad/
 │   └── cli.py                              # CLI benchmark runner
 ├── scripts/
 │   ├── evaluate_lob_triad.py               # Benchmark sweep & JSON summary generator
-│   └── audit_gfm_math.py                   # 21-rule GitHub Flavored Markdown & KaTeX linter
+│   └── audit_gfm_math.py                   # GitHub Flavored Markdown & KaTeX math linter
 ├── studio/
 │   └── lob_triad_portable_studio.html      # Zero-dependency WebGL2 L3 reconstruction studio
 ├── tests/
@@ -177,16 +180,14 @@ lob-triad/
 
 ### 1. Rust `#![no_std]` SIMD Core Tests
 
-```powershell
-cd c:\Users\x\Documents\antigravity\lob-triad\rust\lob_triad_rs
-cargo test --release
-cargo build --release
+```bash
+cargo test --manifest-path rust/lob_triad_rs/Cargo.toml --release
+cargo build --manifest-path rust/lob_triad_rs/Cargo.toml --release
 ```
 
 ### 2. Python Verification Suite, Benchmark & GFM Math Audit
 
-```powershell
-cd c:\Users\x\Documents\antigravity\lob-triad
+```bash
 python -m pytest tests/test_lob_triad.py -v
 python scripts/evaluate_lob_triad.py
 python scripts/audit_gfm_math.py README.md docs/ARCHITECTURE.md
@@ -209,3 +210,9 @@ Open [`studio/lob_triad_portable_studio.html`](studio/lob_triad_portable_studio.
   url          = {https://github.com/sneed-and-feed/lob-triad}
 }
 ```
+
+---
+
+## 7. License
+
+Dedicated to the public domain under [CC0 1.0 Universal (`CC0-1.0`)](LICENSE).
