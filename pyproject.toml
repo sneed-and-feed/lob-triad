@@ -9,7 +9,7 @@ description = "Zero-Weight Level-3 Limit Order Book & Microstructure Tomography 
 authors = [{ name = "Noah Cohen" }]
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = {text = "CC0-1.0"}
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
